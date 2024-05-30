@@ -1,62 +1,56 @@
-require('dotenv').config()
+import path from 'node:path'
+import { availableParallelism } from 'node:os';
+import cluster from 'node:cluster'
+import { readFile } from 'node:fs/promises'
 
-const path = require('node:path')
-const fs = require('node:fs')
-const helmet = require('helmet')
-const morgan = require('morgan')
-const express = require('express')
-const sqlite3 = require('sqlite3')
-const cs = require('cookie-session')
+import { fileURLToPath } from 'node:url';
 
-const {  keys, port, addr  } = require('./config')
+import sqlite3 from 'sqlite3'
+import { KeyStore } from './app/services/keystore.service.mjs'
+import { setupDatabase } from './app/services/database.service.mjs'
 
-const app = express()
+import { createApplication } from './app/index.mjs';
 
-app.set('views', path.join(__dirname, 'views'))
-app.set('view engine', 'ejs')
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-app.use([
-    morgan('tiny'),
-    helmet(),
-    cs({ name: 'session', keys }),
-    express.urlencoded({ extended: true }),
-    express.json(),
-])
+const PORT = 3000
+const ADDR = '127.0.0.1'
 
+async function setup() {
+    const filename = path.join(__dirname, 'data', 'app.db')
+    const schema = path.join(__dirname, 'data', 'schema.sql')
 
-app.get('/', (req, res) => {
-    // Page d'accueil
-    console.log(req.session.user)
-    res.render('index')
-})
+    console.log(`Master ${process.pid}\tSetting up database ...`)
+    const db = await setupDatabase({ filename, schema })
 
-app.get('/register', (req, res) => {
-    // Formulaire d'inscription (sign-up)
-})
+    console.log(`Master ${process.pid}\tSetting up keystore ...`)
+    const ks = KeyStore.getInstance(db);
+    const keys = await ks.getKeys();
+    if(keys.length == 0) {
+        await ks.setKeys();
+    }
+}
 
-app.post('/register', (req, res) => {
-    // Traitement de l'inscription (sign-up)
-})
+(async function main() {
+    if(cluster.isPrimary) {
+        const WORKERS = availableParallelism()
 
-app.get('/login', (req, res) => {
-    // Formulaire d'authentification (login)
-    req.session.user = { email: 'test@test.test' }
-    res.redirect('/')
-})
+        console.log(`Master ${process.pid}\tStarting...`)
+        await setup();
 
-app.post('/login', (req, res) => {
-    // Traitement de l'authentification
-})
-
-app.get('/logout', (req, res) => {
-    // Déconnexion
-    req.session.user = null
-    res.redirect('/')
-})
-
-// ... le reste de l'application doit être développé ici, ou dans des fichiers annexes, en fonction de la structure choisie ...
-
-// ... lancement de l'écoute du serveur sur le port HTTP_PORT et l'IP HTTP_ADDR
-app.listen(port, addr, () => {
-    console.log('Server is running...')
-})
+        for(let i = 0; i < WORKERS; i++) {
+            cluster.fork();
+        }
+    
+        cluster.on('exit', (worker, code, signal) => {
+            console.log(`Worker ${worker.pid} exited with code ${code}...`)
+        });
+    } else {
+        const __rootdir = __dirname
+        const app = await createApplication({ __rootdir })
+        app.listen(PORT, ADDR, () => {
+            console.log(`Worker ${process.pid}\tRunning...`)
+        });
+    }
+})()
