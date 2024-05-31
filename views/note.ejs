@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Note</title>
+</head> 
+
+<body>
+<form action="/note" method="post">
+<div>
+    <label for="title">Titre</label>
+    <input name="title" type="text" placeholder="Titre ..."> 
+</div>
+<div>
+    <label for="content">Contenue</label>
+    <input name="content" type="text" placeholder="contenue ..."> 
+</div>
+
+<div>
+    <button type="submit">GO !</button>
+</div>
+</form>
+
+
+<a href="/">Retour en arrière</a>
+
+<br><br>
+<!-- Normalement, sensé avoir une condition pour print les notes dans le /note.
+    A la place, passe directement via /note/(id:1,2,3,4). Ex : /note/1
+-->
+<h1><%= note.title %></h1>
+<p><%= note.content %></p>
+
+
+</body>
+</html>
